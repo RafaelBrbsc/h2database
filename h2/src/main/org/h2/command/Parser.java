@@ -200,6 +200,8 @@ import org.h2.command.query.QueryOrderBy;
 import org.h2.command.query.Select;
 import org.h2.command.query.SelectUnion;
 import org.h2.command.query.TableValueConstructor;
+import org.h2.compatiblity.postgresql.CompatibilityParser;
+import org.h2.compatiblity.postgresql.PostgreSQLParser;
 import org.h2.constraint.ConstraintActionType;
 import org.h2.engine.ConnectionInfo;
 import org.h2.engine.Constants;
@@ -3349,7 +3351,7 @@ public class Parser {
         return readExpressionPart2(r);
     }
 
-    private Expression readExpression() {
+    public Expression readExpression() {
         return readExpressionPart2(readAnd(readCondition()));
     }
 
@@ -3683,11 +3685,17 @@ public class Parser {
 
     private Expression readSum() {
         Expression r = readFactor();
+        CompatibilityParser compatibilityParser = new PostgreSQLParser(session, this);
         while (true) {
+            boolean compatibilityParserShouldHandle = compatibilityParser.shouldHandleBinarySum(r);
             if (readIf(PLUS_SIGN)) {
-                r = new BinaryOperation(OpType.PLUS, r, readFactor());
+                r = compatibilityParserShouldHandle ?
+                        compatibilityParser.handleBinaryOperation("+", r, readTerm()) :
+                        new BinaryOperation(OpType.PLUS, r, readFactor());
             } else if (readIf(MINUS_SIGN)) {
-                r = new BinaryOperation(OpType.MINUS, r, readFactor());
+                r = compatibilityParserShouldHandle ?
+                        compatibilityParser.handleBinaryOperation("-", r, readTerm()) :
+                        new BinaryOperation(OpType.MINUS, r, readFactor());
             } else {
                 return r;
             }
@@ -3696,13 +3704,21 @@ public class Parser {
 
     private Expression readFactor() {
         Expression r = readTerm();
+        CompatibilityParser compatibilityParser = new PostgreSQLParser(session, this);
         while (true) {
+            boolean compatibilityParserShouldHandle = compatibilityParser.shouldHandleBinaryFactor(r);
             if (readIf(ASTERISK)) {
-                r = new BinaryOperation(OpType.MULTIPLY, r, readTerm());
+                r = compatibilityParserShouldHandle ?
+                        compatibilityParser.handleBinaryOperation("*", r, readTerm()) :
+                        new BinaryOperation(OpType.MULTIPLY, r, readTerm());
             } else if (readIf(SLASH)) {
-                r = new BinaryOperation(OpType.DIVIDE, r, readTerm());
+                r = compatibilityParserShouldHandle ?
+                        compatibilityParser.handleBinaryOperation("/", r, readTerm()) :
+                        new BinaryOperation(OpType.DIVIDE, r, readTerm());
             } else if (readIf(PERCENT)) {
-                r = new MathFunction(r, readTerm(), MathFunction.MOD);
+                r = compatibilityParserShouldHandle ?
+                        compatibilityParser.handleBinaryOperation("%", r, readTerm()) :
+                        new MathFunction(r, readTerm(), MathFunction.MOD);
             } else {
                 return r;
             }
@@ -4111,11 +4127,19 @@ public class Parser {
                 return e;
             }
         }
+        CompatibilityParser compatibilityParser = new PostgreSQLParser(session, this);
+        Expression e;
+        if (compatibilityParser != null) {
+            e = compatibilityParser.readFunction(upperName);
+            if (e != null) {
+                return e;
+            }
+        }
         AggregateType agg = Aggregate.getAggregateType(upperName);
         if (agg != null) {
             return readAggregate(agg, upperName);
         }
-        Expression e = readBuiltinFunctionIf(upperName);
+        e = readBuiltinFunctionIf(upperName);
         if (e != null) {
             return e;
         }
@@ -4785,18 +4809,18 @@ public class Parser {
         return f;
     }
 
-    private Expression readSingleArgument() {
+    public Expression readSingleArgument() {
         Expression arg = readExpression();
         read(CLOSE_PAREN);
         return arg;
     }
 
-    private Expression readNextArgument() {
+    public Expression readNextArgument() {
         read(COMMA);
         return readExpression();
     }
 
-    private Expression readLastArgument() {
+    public Expression readLastArgument() {
         read(COMMA);
         Expression arg = readExpression();
         read(CLOSE_PAREN);
@@ -4814,7 +4838,7 @@ public class Parser {
         return arg;
     }
 
-    private Expression readIfArgument() {
+    public Expression readIfArgument() {
         Expression arg = readIf(COMMA) ? readExpression() : null;
         read(CLOSE_PAREN);
         return arg;

@@ -12,7 +12,7 @@ import org.h2.util.StringUtils;
 /**
  * Implementation of the CHARACTER VARYING data type.
  */
-public final class ValueVarchar extends ValueStringBase {
+public class ValueVarchar extends ValueStringBase {
 
     /**
      * Empty string. Should not be used in places where empty string can be
@@ -20,7 +20,7 @@ public final class ValueVarchar extends ValueStringBase {
      */
     public static final ValueVarchar EMPTY = new ValueVarchar("");
 
-    private ValueVarchar(String value) {
+    public ValueVarchar(String value) {
         super(value);
     }
 
